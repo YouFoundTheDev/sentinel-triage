@@ -1,0 +1,144 @@
+[
+  {
+    "id": "seen-mal-01",
+    "group": "seen_malicious",
+    "input": "https://019-7lfcn-lh1-vxbva7-ou0bwr.pages.dev/",
+    "expected_label": "malicious",
+    "notes": "OpenPhish sighting loaded into BigQuery; exercises the lookup happy path."
+  },
+  {
+    "id": "seen-mal-02",
+    "group": "seen_malicious",
+    "input": "https://678coin.top/",
+    "expected_label": "malicious",
+    "notes": "OpenPhish sighting loaded into BigQuery; suspicious TLD."
+  },
+  {
+    "id": "seen-mal-03",
+    "group": "seen_malicious",
+    "input": "https://87uxj.com/",
+    "expected_label": "malicious",
+    "notes": "OpenPhish sighting loaded into BigQuery."
+  },
+  {
+    "id": "seen-mal-04",
+    "group": "seen_malicious",
+    "input": "http://alibabaglobalnetwork.com/",
+    "expected_label": "malicious",
+    "notes": "OpenPhish sighting loaded into BigQuery; brand impersonation."
+  },
+  {
+    "id": "seen-mal-05",
+    "group": "seen_malicious",
+    "input": "https://capgemini.m365-microsoft.com/home/daaa8a144d524f76be39aebd5124498e",
+    "expected_label": "malicious",
+    "notes": "OpenPhish sighting loaded into BigQuery; nested brand-like subdomain."
+  },
+  {
+    "id": "seen-mal-06",
+    "group": "seen_malicious",
+    "input": "https://auth.properties/E.aUtDFan446dX?/microsoftonline/mailbox/upgrade",
+    "expected_label": "malicious",
+    "notes": "OpenPhish sighting loaded into BigQuery; credential-themed path."
+  },
+  {
+    "id": "unseen-mal-01",
+    "group": "unseen_malicious",
+    "input": "https://000-054343-info.weebly.com/login",
+    "expected_label": "malicious",
+    "notes": "Phishing Army active blocklist; held out of BigQuery; DNS resolves on a shared host."
+  },
+  {
+    "id": "unseen-mal-02",
+    "group": "unseen_malicious",
+    "input": "https://0000000000000190000010111.weebly.com/",
+    "expected_label": "malicious",
+    "notes": "Phishing Army active blocklist; held out of BigQuery; DNS resolves on a shared host."
+  },
+  {
+    "id": "unseen-mal-03",
+    "group": "unseen_malicious",
+    "input": "https://0002985647.weebly.com/verify",
+    "expected_label": "malicious",
+    "notes": "Phishing Army active blocklist; held out of BigQuery; DNS resolves on a shared host."
+  },
+  {
+    "id": "unseen-mal-04",
+    "group": "unseen_malicious",
+    "input": "https://001zimbra.weebly.com/",
+    "expected_label": "malicious",
+    "notes": "Phishing Army active blocklist; held out of BigQuery; DNS resolves on a shared host."
+  },
+  {
+    "id": "ben-01",
+    "group": "benign",
+    "input": "https://nyt.com/",
+    "expected_label": "benign",
+    "notes": "Tranco rank 6000-12000; outside the loaded top 5000."
+  },
+  {
+    "id": "ben-02",
+    "group": "benign",
+    "input": "https://procyclingstats.com/",
+    "expected_label": "benign",
+    "notes": "Tranco rank 6000-12000; outside the loaded top 5000."
+  },
+  {
+    "id": "ben-03",
+    "group": "benign",
+    "input": "https://klook.com/login",
+    "expected_label": "benign",
+    "notes": "Tranco rank 6000-12000; benign login path."
+  },
+  {
+    "id": "ben-04",
+    "group": "benign",
+    "input": "https://europepmc.org/",
+    "expected_label": "benign",
+    "notes": "Tranco rank 6000-12000; outside the loaded top 5000."
+  },
+  {
+    "id": "ben-05",
+    "group": "benign",
+    "input": "https://computrabajo.com/login",
+    "expected_label": "benign",
+    "notes": "Tranco rank 6000-12000; benign login path."
+  },
+  {
+    "id": "ben-06",
+    "group": "benign",
+    "input": "https://pinterest.co.uk/",
+    "expected_label": "benign",
+    "notes": "Tranco rank 6000-12000; outside the loaded top 5000."
+  },
+  {
+    "id": "ben-07",
+    "group": "benign",
+    "input": "https://thespruce.com/",
+    "expected_label": "benign",
+    "notes": "Tranco rank 6000-12000; outside the loaded top 5000."
+  },
+  {
+    "id": "ben-08",
+    "group": "benign",
+    "input": "https://domru.ru/",
+    "expected_label": "benign",
+    "notes": "Tranco rank 6000-12000; outside the loaded top 5000."
+  },
+  {
+    "id": "unk-01",
+    "group": "unknown",
+    "input": "https://nonexistent-a1b2c3d4.invalid/",
+    "expected_label": "unknown",
+    "expected_status": "needs_review",
+    "notes": "Reserved .invalid host; expected escalation because DNS/RDAP are unavailable."
+  },
+  {
+    "id": "unk-02",
+    "group": "unknown",
+    "input": "https://missing-e5f6g7h8.invalid/login",
+    "expected_label": "unknown",
+    "expected_status": "needs_review",
+    "notes": "Reserved .invalid host; expected escalation because DNS/RDAP are unavailable."
+  }
+]
