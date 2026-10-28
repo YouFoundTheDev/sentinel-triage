@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sentinel Triage</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="ambient" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">ST</span>
+        <div>
+          <h1>Sentinel Triage</h1>
+          <p>Fail-closed SOC alert console</p>
+        </div>
+      </div>
+      <div class="status" id="api-status" data-state="checking">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="api-status-text">Checking API</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel input-panel">
+        <div class="eyebrow">Indicator intake</div>
+        <h2>Investigate a URL or domain</h2>
+        <p class="muted">
+          Evidence is gathered from BigQuery, DNS, RDAP, URL features, and a BQML score.
+          The submitted URL is never fetched.
+        </p>
+
+        <form id="triage-form">
+          <label for="indicator">Suspicious URL or domain</label>
+          <div class="input-row">
+            <input
+              id="indicator"
+              name="indicator"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="https://example.com/login"
+              maxlength="4096"
+              required
+            />
+            <button type="submit" id="submit">Triage</button>
+          </div>
+          <div class="examples">
+            <span class="muted small">Try:</span>
+            <button type="button" class="chip" data-example="https://example.com/">
+              example.com
+            </button>
+            <button type="button" class="chip" data-example="http://alibabaglobalnetwork.com/">
+              malicious sample
+            </button>
+            <button type="button" class="chip" data-example="https://000-054343-info.weebly.com/login">
+              unseen sample
+            </button>
+          </div>
+        </form>
+
+        <div id="error" class="error" role="alert" hidden></div>
+      </section>
+
+      <section id="result" class="result" aria-live="polite" hidden>
+        <div class="result-head">
+          <div>
+            <div class="eyebrow">Verdict</div>
+            <div id="badges" class="badges"></div>
+          </div>
+          <div class="confidence">
+            <div class="confidence-label">
+              <span>Confidence</span>
+              <strong id="confidence-value">—</strong>
+            </div>
+            <div class="bar"><i id="confidence-fill"></i></div>
+          </div>
+        </div>
+
+        <div class="result-grid">
+          <div class="panel">
+            <div class="eyebrow">Recommended action</div>
+            <p id="action" class="action"></p>
+          </div>
+          <div class="panel">
+            <div class="eyebrow">Reasoning</div>
+            <p id="reasoning" class="reasoning"></p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Evidence</div>
+              <h3>Tool results</h3>
+            </div>
+            <span id="meta" class="meta"></span>
+          </div>
+          <div id="evidence" class="evidence"></div>
+        </div>
+
+        <details class="raw">
+          <summary>Raw JSON</summary>
+          <pre id="raw"></pre>
+        </details>
+      </section>
+
+      <section id="empty" class="panel empty">
+        <div class="empty-grid">
+          <div>
+            <div class="eyebrow">Fail closed</div>
+            <h3>Uncertainty goes to a human.</h3>
+            <p class="muted">
+              Only confident benign verdicts can auto-close. Malicious, degraded,
+              conflicting, or low-confidence results are escalated.
+            </p>
+          </div>
+          <div>
+            <div class="eyebrow">No URL fetch</div>
+            <h3>Passive context only.</h3>
+            <p class="muted">
+              DNS, RDAP, BigQuery, and Vertex AI. The submitted URL is never opened or
+              connected to.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      Private Cloud Run service. Use <code>gcloud run services proxy</code> or
+      <code>make api</code> to open this console.
+    </footer>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

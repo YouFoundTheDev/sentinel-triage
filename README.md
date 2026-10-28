@@ -105,6 +105,31 @@ make eval          # live Vertex AI eval; writes docs/eval.md
 `/healthz` and `/readyz` work locally and in the container. Cloud Run's edge reserves some
 paths ending in `z`, so the deployed service also exposes `/health` and `/ready`.
 
+## Frontend
+
+FastAPI serves a small vanilla HTML/CSS/JS console at `/ui/` — no build step, no CDN, no
+external fonts. It shows the verdict badges, confidence, recommended action, reasoning,
+per-tool evidence, latency, and raw JSON. The UI only calls the same-origin API; it never
+fetches the submitted URL.
+
+Locally:
+
+```bash
+make api
+open http://127.0.0.1:8080/ui/
+```
+
+The Cloud Run service is private, so use the authenticated proxy in a browser:
+
+```bash
+gcloud run services proxy soc-triage-agent \
+  --region=us-central1 --project=wide-factor-387115 --port=8081
+open http://127.0.0.1:8081/ui/
+```
+
+The proxy injects your identity token for the page, `/ready`, and `/triage` requests.
+`docs/demo.md` contains abridged actual requests and outputs.
+
 ## Deploy
 
 ```bash
@@ -232,11 +257,11 @@ this project during the build.
 
 ```text
 agent/       ADK investigator/formatter, policy, JSON logging
-api/         FastAPI service (/triage, /healthz, /health, /readyz, /ready)
+api/         FastAPI service and vanilla /ui console
 data/        download, clean, BigQuery load, feature build, BQML training
 tools/       lookup, DNS/RDAP enrichment, URL features, ML score
 evals/       labeled cases, raw results (ignored), eval runner
 docs/        eval report and demo notes
 infra/       setup, deploy, CI setup, trigger, BigQuery schemas/SQL
-tests/       102 unit tests
+tests/       103 unit tests
 ```

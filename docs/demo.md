@@ -33,6 +33,27 @@ curl -s -X POST "$URL/triage" \
   -d '{"indicator":"http://alibabaglobalnetwork.com/"}' | jq
 ```
 
+## Browser console
+
+The FastAPI service serves a vanilla console at `/ui/`. Local:
+
+```bash
+make api
+open http://127.0.0.1:8080/ui/
+```
+
+For the private Cloud Run service, use the authenticated proxy:
+
+```bash
+gcloud run services proxy soc-triage-agent \
+  --region=us-central1 --project=wide-factor-387115 --port=8081
+open http://127.0.0.1:8081/ui/
+```
+
+The console calls `/ready` and `/triage` same-origin; the proxy adds your identity token.
+It has no external JavaScript, fonts, or CDN dependencies, and it never fetches the
+submitted URL.
+
 ## Actual output
 
 Abridged from a run against revision `soc-triage-agent-00008-9j9`. Timings include cold

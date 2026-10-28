@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from agent.pipeline import triage
@@ -25,6 +27,15 @@ app = FastAPI(
     description="Evidence-gathering and fail-closed triage for a suspicious URL or domain.",
     version="0.1.0",
 )
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
+
+
+@app.get("/", include_in_schema=False)
+async def root() -> RedirectResponse:
+    return RedirectResponse(url="/ui/", status_code=307)
+
 
 _ready_cache: tuple[float, bool, dict[str, Any]] | None = None
 

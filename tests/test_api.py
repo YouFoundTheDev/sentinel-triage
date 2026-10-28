@@ -95,3 +95,20 @@ def test_triage_returns_503_on_unexpected_error(monkeypatch) -> None:
     response = client.post("/triage", json={"indicator": "https://example.com/"})
 
     assert response.status_code == 503
+
+
+def test_frontend_is_served() -> None:
+    client = TestClient(api_main.app)
+
+    page = client.get("/ui/")
+    assert page.status_code == 200
+    assert "Sentinel Triage" in page.text
+    assert "app.js" in page.text
+
+    script = client.get("/ui/app.js")
+    assert script.status_code == 200
+    assert "javascript" in script.headers["content-type"]
+
+    root = client.get("/", follow_redirects=False)
+    assert root.status_code in {307, 308}
+    assert root.headers["location"] == "/ui/"
