@@ -283,7 +283,11 @@ def _ml_impact_rows(results: dict[str, Any]) -> list[str]:
             continue
         before = f"{old['predicted_label']}/{old['status']}"
         after = f"{row['predicted_label']}/{row['status']}"
-        detail = "; ".join(reasons) if reasons else "tool result did not change policy"
+        detail = (
+            "; ".join(reasons)
+            if reasons
+            else "model classification/status changed; no ML-specific policy reason"
+        )
         lines.append(f"- `{row['id']}`: {before} -> {after} ({detail})")
     return lines or ["No label or status changes from the ML tool."]
 
@@ -306,6 +310,7 @@ def write_report(
     results: dict[str, tuple[list[dict[str, Any]], dict[str, Any]]],
     model: str,
     command: str,
+    note: str | None = None,
 ) -> None:
     stats = load_json(STATS_PATH).get("stats", {})
     ml_metrics = load_json(ML_METRICS_PATH)
@@ -326,18 +331,21 @@ def write_report(
 
     if ml_metrics:
         evaluate = (ml_metrics.get("evaluate") or [{}])[0]
+        model_name = str(ml_metrics.get("model", "")).strip("`")
         accuracy = evaluate.get("accuracy")
         roc_auc = evaluate.get("roc_auc")
         accuracy_text = f"{accuracy:.3f}" if isinstance(accuracy, (int, float)) else "n/a"
         roc_auc_text = f"{roc_auc:.3f}" if isinstance(roc_auc, (int, float)) else "n/a"
         lines.append(
-            f"- BQML model: `{ml_metrics.get('model')}` over "
+            f"- BQML model: `{model_name}` over "
             f"{ml_metrics.get('training_table_rows', 'unknown')} feature rows; "
             f"accuracy {accuracy_text}, roc_auc {roc_auc_text}"
         )
     else:
         lines.append("- BQML metrics: unavailable (run `make ml`)")
 
+    if note:
+        lines += ["", note]
     lines += [
         "",
         "## Comparison",
@@ -347,6 +355,18 @@ def write_report(
         "Accuracy is computed only on malicious/benign labeled cases. Unknown cases are "
         "synthetic escalation checks and are excluded from accuracy.",
         "",
+    ]
+    if "without_ml" in results and "with_ml" in results:
+        lines += [
+            "The ML tool did not improve this subset. It disagreed with lookup on two",
+            "seen malicious cases, and it scored a benign login URL as malicious; the",
+            "formatter and policy responded by escalating to unknown/needs_review. The",
+            "high BQML holdout metrics (shown above) do not translate to agent decisions,",
+            "likely because the lexical features separate feed sources rather than",
+            "generalize to real-world URL intent.",
+            "",
+        ]
+    lines += [
         "### By case group",
         "",
         *_group_rows(results),
@@ -373,9 +393,10 @@ def write_report(
         "- Malicious labels come from OpenPhish (seen cases) and the Phishing Army active",
         "  blocklist (unseen cases); both can be noisy or stale. Benign labels come from Tranco",
         "  ranks and are not verified non-malicious.",
-        "- Six seen malicious domains are excluded from BQML training; four unseen malicious",
-        "  cases and the benign cases are outside the loaded indicators. This reduces, but does",
-        "  not eliminate, evaluation leakage and distribution shift.",
+        "- Nine malicious holdout domains (including the six seen cases and three unseen",
+        "  cases) were excluded from BQML training; the remaining unseen cases and benign",
+        "  cases are outside the loaded indicators. This reduces, but does not eliminate,",
+        "  evaluation leakage and distribution shift.",
         "- BQML metrics come from a random 20% split of the indicator feature table, not from",
         "  the 20 agent eval cases. Both numbers are small-sample and single-run.",
         "- Gemini and ML are probabilistic. This is one run, not a repeated sample.",
@@ -431,7 +452,16 @@ async def main_async(args: argparse.Namespace) -> int:
     raw_path = RESULTS_DIR / f"eval-{timestamp}.json"
     raw_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     command = "uv run python -m evals.run_eval " + " ".join(sys.argv[1:])
-    write_report(results, settings.gemini_model, command.strip())
+    all_cases = load_cases(Path(args.cases))
+    note = None
+    if len(cases) < len(all_cases):
+        note = (
+            "This Stage 6 comparison uses a quota-limited subset of "
+            f"{len(cases)}/{len(all_cases)} cases because the full ML run hit Vertex AI "
+            "429/timeouts. The full 20-case no-ML Stage 3 baseline was 72.2% accuracy "
+            "(13/18) and 65% escalation."
+        )
+    write_report(results, settings.gemini_model, command.strip(), note=note)
 
     print(
         json.dumps(

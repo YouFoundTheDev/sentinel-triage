@@ -10,6 +10,8 @@ Stage 4 creates a private Cloud Run service backed by BigQuery and Vertex AI.
 | Region | `us-central1` |
 | BigQuery dataset | `triage` (US) |
 | BigQuery table | `triage.indicators` |
+| BQML feature table | `triage.url_features` |
+| BQML model | `triage.url_classifier` |
 | Artifact Registry repo | `soc-triage` (`us-central1`, Docker) |
 | Runtime service account | `soc-triage-runtime@wide-factor-387115.iam.gserviceaccount.com` |
 | Builder service account | `soc-triage-builder@wide-factor-387115.iam.gserviceaccount.com` |
@@ -192,6 +194,21 @@ Verified:
 
 `.github/workflows/ci.yml` runs `uv sync`, `ruff check`, and `pytest` on pull requests to
 `main`. It uses no GCP credentials and does not deploy.
+
+## BigQuery ML
+
+```bash
+make ml
+```
+
+This builds `triage.url_features` (agent-eval holdout domains excluded) and trains/evaluates
+`triage.url_classifier` with logistic regression. The deployed agent calls `ML.PREDICT`
+through the `ml_score` tool. The runtime service account's dataset `READER` access was
+verified against the model via a live Cloud Run `/triage` request.
+
+The model's toy holdout metrics (99.8% accuracy, 1.000 ROC AUC) do not translate to the
+agent eval; see `docs/eval.md`. The Stage 6 comparison uses a 12-case subset because the
+full 20-case ML run hit Vertex AI 429/timeout quota.
 
 ## Health endpoint caveat
 

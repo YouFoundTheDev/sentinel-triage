@@ -4,9 +4,9 @@ Given a suspicious URL or domain, this project gathers context, returns a struct
 verdict (severity, confidence, reasoning, evidence, recommended action), and escalates
 uncertain results for human review instead of auto-closing them.
 
-> **Status: Stage 5 — data pipeline, tools, ADK triage agent, deterministic policy, eval,
-> FastAPI, private Cloud Run deployment, Cloud Build pipeline, and PR checks.** BigQuery ML
-> and the final README/demo land in later stages.
+> **Status: Stage 6 — data pipeline, tools, ADK triage agent, deterministic policy, eval,
+> FastAPI, private Cloud Run deployment, Cloud Build CI/CD, and a BigQuery ML tool.** The
+> final README, architecture diagram, and demo land in Stage 7.
 
 ## What Stage 1 does
 
@@ -45,6 +45,8 @@ returned as structured `partial` or `unavailable` results, never raised.
 - `extract_url_features(url)` — local-only features: URL/host lengths, subdomain count,
   digit ratio, suspicious TLD, IP-literal host, punycode, query/path shape, suspicious
   keywords, and Shannon entropy.
+- `ml_score(url)` — BigQuery ML `ML.PREDICT` against `triage.url_classifier`; returns a
+  predicted label and class probabilities. It is a fourth, probabilistic signal.
 
 None of these tools fetches or connects to the submitted URL. `lookup_indicator` talks
 only to BigQuery; `enrich_domain` talks only to DNS and a fixed RDAP bootstrap endpoint.
@@ -125,6 +127,29 @@ Actions workflow were both verified successfully. Exact setup commands are in
 Pull requests run lint + tests in `.github/workflows/ci.yml` using GitHub Actions and no GCP
 credentials.
 
+## BigQuery ML (Stage 6)
+
+`make ml` builds the `triage.url_features` table from the indicators, excluding the
+agent-eval holdout domains, then trains `triage.url_classifier` with BigQuery ML
+logistic regression (`auto_class_weights=TRUE`, random 80/20 split). The model reaches
+99.8% holdout accuracy / 1.000 ROC AUC on the toy feature table, but that number does not
+translate to the agent eval.
+
+The deployed agent now includes `ml_score` by default. On a 12-case quota-limited subset,
+adding ML **did not improve** results:
+
+| Metric | Without ML | With ML |
+|---|---:|---:|
+| Labeled accuracy | 60.0% | 30.0% |
+| Escalation rate | 83.3% | 91.7% |
+| Confidently wrong | 0 | 0 |
+
+The ML tool disagreed with lookup on two seen malicious cases and flagged a benign login
+URL as malicious; the formatter and policy correctly escalated to `unknown/needs_review`.
+The full 20-case no-ML Stage 3 baseline was 72.2% accuracy and 65% escalation. The full
+20-case with-ML run was blocked by Vertex AI 429/timeout quota, so the comparison is a
+subset, not a production result. Details and per-case data are in `docs/eval.md`.
+
 ## Prerequisites
 
 - Python 3.11+ (uv uses the version in `.python-version`, currently 3.13)
@@ -153,6 +178,7 @@ make data-local   # download + clean only; no GCP calls
 make data         # download + clean + load BigQuery
 make test
 make lint
+make ml           # build features and train/evaluate the BQML model
 make eval         # live Vertex AI eval; writes docs/eval.md
 make setup        # create service account, IAM, Artifact Registry
 make deploy       # build/push image and deploy private Cloud Run service
@@ -195,9 +221,8 @@ scripts/    demo commands (Stage 7)
 - The agent will never fetch the submitted URL itself. That constraint is enforced when
   the tools are added in Stage 2.
 
-## Next stages
+## Next stage
 
-1. BigQuery ML bonus and a with/without-ML eval comparison.
-2. Full README, architecture diagram, and demo.
+1. Final README, architecture diagram, and demo.
 
 The full write-up and architecture diagram will be added in Stage 7.
