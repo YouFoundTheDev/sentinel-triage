@@ -34,6 +34,23 @@ def make_verdict(**overrides) -> Verdict:
     return Verdict(**values)
 
 
+def ml_call(
+    predicted_label: str = "benign",
+    malicious_probability: float = 0.1,
+    benign_probability: float = 0.9,
+) -> ToolCall:
+    return make_call(
+        "ml_score",
+        result={
+            "status": "ok",
+            "summary": f"ML predicts {predicted_label}",
+            "predicted_label": predicted_label,
+            "malicious_probability": malicious_probability,
+            "benign_probability": benign_probability,
+        },
+    )
+
+
 def clean_recorder() -> ToolRecorder:
     return ToolRecorder(
         calls=[
@@ -181,3 +198,83 @@ def test_policy_replaces_model_evidence_and_appends_reasoning() -> None:
 
     assert verdict.evidence
     assert "Policy escalation:" in verdict.reasoning
+
+
+def test_ml_tool_is_required_when_enabled() -> None:
+    verdict, reasons = apply_policy(
+        make_verdict(),
+        clean_recorder(),
+        expect_ml=True,
+    )
+
+    assert verdict.status == "needs_review"
+    assert any("ml_score" in reason for reason in reasons)
+
+
+def test_clean_benign_with_ml_can_auto_close() -> None:
+    recorder = clean_recorder()
+    recorder.calls.append(ml_call())
+
+    verdict, reasons = apply_policy(
+        make_verdict(),
+        recorder,
+        expect_ml=True,
+    )
+
+    assert verdict.status == "auto_closed"
+    assert reasons == []
+    assert any(item.tool == "ml_score" for item in verdict.evidence)
+
+
+def test_ml_malicious_conflicts_with_benign_lookup() -> None:
+    recorder = clean_recorder()
+    recorder.calls[0] = make_call(
+        "lookup_indicator",
+        result={
+            "status": "ok",
+            "summary": "benign",
+            "malicious_count": 0,
+            "benign_count": 1,
+            "has_conflicting_labels": False,
+        },
+    )
+    recorder.calls.append(ml_call("malicious", 0.9, 0.1))
+
+    verdict, reasons = apply_policy(make_verdict(), recorder, expect_ml=True)
+
+    assert verdict.status == "needs_review"
+    assert any("ML predicts malicious" in reason for reason in reasons)
+
+
+def test_ml_benign_conflicts_with_malicious_lookup() -> None:
+    recorder = clean_recorder()
+    recorder.calls[0] = make_call(
+        "lookup_indicator",
+        result={
+            "status": "ok",
+            "summary": "malicious",
+            "malicious_count": 1,
+            "benign_count": 0,
+            "has_conflicting_labels": False,
+        },
+    )
+    recorder.calls.append(ml_call("benign", 0.05, 0.95))
+
+    verdict, reasons = apply_policy(
+        make_verdict(classification="malicious"),
+        recorder,
+        expect_ml=True,
+    )
+
+    assert verdict.status == "needs_review"
+    assert any("ML predicts benign" in reason for reason in reasons)
+
+
+def test_ml_malicious_conflicts_with_benign_verdict() -> None:
+    recorder = clean_recorder()
+    recorder.calls.append(ml_call("malicious", 0.85, 0.15))
+
+    verdict, reasons = apply_policy(make_verdict(), recorder, expect_ml=True)
+
+    assert verdict.status == "needs_review"
+    assert any("ML predicts malicious" in reason for reason in reasons)

@@ -1,4 +1,4 @@
-"""Run the labeled triage eval and write docs/eval.md plus raw results."""
+"""Run the labeled triage eval with and without ML and write docs/eval.md."""
 
 from __future__ import annotations
 
@@ -21,18 +21,38 @@ CASES_PATH = EVALS_DIR / "cases.json"
 RESULTS_DIR = EVALS_DIR / "results"
 DOCS_PATH = ROOT / "docs" / "eval.md"
 STATS_PATH = ROOT / "data" / "clean" / "stats.json"
+ML_METRICS_PATH = ROOT / "data" / "clean" / "ml_metrics.json"
+
+MODE_LABELS = {"without_ml": "Without ML", "with_ml": "With ML"}
 
 
 def load_cases(path: Path) -> list[dict[str, Any]]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-async def run_case(case: dict[str, Any], *, retries: int, delay: float) -> Any:
+def load_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+async def run_case(
+    case: dict[str, Any],
+    *,
+    retries: int,
+    delay: float,
+    use_ml: bool,
+) -> Any:
     last_result = None
     for attempt in range(retries + 1):
-        result = await triage(case["input"])
+        result = await triage(case["input"], use_ml=use_ml)
         last_result = result
-        transient = result.error and ("429" in result.error or "RESOURCE_EXHAUSTED" in result.error)
+        transient = result.error and (
+            "429" in result.error
+            or "RESOURCE_EXHAUSTED" in result.error
+            or "NodeTimeoutError" in result.error
+            or "timed out" in result.error.lower()
+        )
         if not transient:
             return result
         if attempt < retries:
@@ -129,110 +149,223 @@ def compute_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+async def run_configuration(
+    cases: list[dict[str, Any]],
+    *,
+    use_ml: bool,
+    retries: int,
+    delay: float,
+    label: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for index, case in enumerate(cases, start=1):
+        print(f"[{label} {index}/{len(cases)}] {case['id']} {case['input']}", file=sys.stderr)
+        result = await run_case(case, retries=retries, delay=delay, use_ml=use_ml)
+        rows.append(build_row(case, result))
+        if delay:
+            await asyncio.sleep(delay)
+    return rows, compute_metrics(rows)
+
+
+def _metric_cell(results: dict[str, Any], mode: str, key: str, kind: str) -> str:
+    if mode not in results:
+        return "n/a"
+    metrics = results[mode][1]
+    if kind == "pct":
+        return f"{metrics[key]:.1%}"
+    if kind == "ms":
+        return f"{metrics[key]:.0f} ms"
+    return str(metrics[key])
+
+
+def _comparison_rows(results: dict[str, Any]) -> list[str]:
+    definitions = [
+        ("Labeled accuracy", "accuracy", "pct"),
+        ("Escalation rate", "escalation_rate", "pct"),
+        ("Required escalations met", "required_escalations_met", "int"),
+        ("Unknown cases escalated", "unknown_escalated", "int"),
+        ("Confidently wrong", "confidently_wrong", "int"),
+        ("False negatives", "false_negatives", "int"),
+        ("False positives", "false_positives", "int"),
+        ("Pipeline errors", "errors", "int"),
+        ("Average latency", "average_latency_ms", "ms"),
+    ]
+    lines = ["| Metric | Without ML | With ML |", "|---|---:|---:|"]
+    for label, key, kind in definitions:
+        lines.append(
+            f"| {label} | {_metric_cell(results, 'without_ml', key, kind)} | "
+            f"{_metric_cell(results, 'with_ml', key, kind)} |"
+        )
+    return lines
+
+
+def _group_rows(results: dict[str, Any]) -> list[str]:
+    groups: set[str] = set()
+    for mode in ("without_ml", "with_ml"):
+        if mode in results:
+            groups.update(results[mode][1]["groups"])
+    lines = [
+        "| Group | Baseline accuracy | ML accuracy | Baseline escalated | ML escalated |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for group in sorted(groups):
+        values = []
+        for mode in ("without_ml", "with_ml"):
+            if mode not in results:
+                values.append(("n/a", "n/a"))
+                continue
+            group_metrics = results[mode][1]["groups"].get(group)
+            if not group_metrics:
+                values.append(("n/a", "n/a"))
+                continue
+            accuracy = f"{group_metrics['accuracy']:.1%}" if group_metrics["labeled"] else "n/a"
+            escalated = f"{group_metrics['escalated']}/{group_metrics['total']}"
+            values.append((accuracy, escalated))
+        lines.append(
+            f"| {group} | {values[0][0]} | {values[1][0]} | {values[0][1]} | {values[1][1]} |"
+        )
+    return lines
+
+
+def _per_case_rows(results: dict[str, Any]) -> list[str]:
+    by_mode: dict[str, dict[str, dict[str, Any]]] = {
+        mode: {row["id"]: row for row in results[mode][0]} for mode in results
+    }
+    case_ids: list[str] = []
+    for mode in ("without_ml", "with_ml"):
+        if mode in results:
+            case_ids = [row["id"] for row in results[mode][0]]
+            break
+
+    lines = [
+        "| ID | Group | Input | Expected | Baseline | Baseline status | ML | ML status |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for case_id in case_ids:
+        baseline = by_mode.get("without_ml", {}).get(case_id)
+        with_ml = by_mode.get("with_ml", {}).get(case_id)
+        anchor = baseline or with_ml
+        if anchor is None:
+            continue
+        baseline_text = (
+            f"{baseline['predicted_label']} / {baseline['severity']} / {baseline['confidence']:.2f}"
+            if baseline
+            else "n/a"
+        )
+        ml_text = (
+            f"{with_ml['predicted_label']} / {with_ml['severity']} / {with_ml['confidence']:.2f}"
+            if with_ml
+            else "n/a"
+        )
+        lines.append(
+            f"| {case_id} | {anchor['group']} | `{anchor['input']}` | "
+            f"{anchor['expected_label']} | {baseline_text} | "
+            f"{baseline['status'] if baseline else 'n/a'} | {ml_text} | "
+            f"{with_ml['status'] if with_ml else 'n/a'} |"
+        )
+    return lines
+
+
+def _ml_impact_rows(results: dict[str, Any]) -> list[str]:
+    if "with_ml" not in results:
+        return ["ML run was not included."]
+    if "without_ml" not in results:
+        return ["Baseline run was not included."]
+    baseline = {row["id"]: row for row in results["without_ml"][0]}
+    lines = []
+    for row in results["with_ml"][0]:
+        old = baseline.get(row["id"])
+        if old is None:
+            continue
+        reasons = [reason for reason in row["policy_escalations"] if "ML" in reason]
+        changed = old["predicted_label"] != row["predicted_label"] or old["status"] != row["status"]
+        if not changed and not reasons:
+            continue
+        before = f"{old['predicted_label']}/{old['status']}"
+        after = f"{row['predicted_label']}/{row['status']}"
+        detail = "; ".join(reasons) if reasons else "tool result did not change policy"
+        lines.append(f"- `{row['id']}`: {before} -> {after} ({detail})")
+    return lines or ["No label or status changes from the ML tool."]
+
+
+def _confidently_wrong(rows: list[dict[str, Any]]) -> list[str]:
+    wrong = [row for row in rows if row["confidently_wrong"]]
+    if not wrong:
+        return ["None in this run."]
+    lines = []
+    for row in wrong:
+        lines.append(
+            f"- `{row['id']}`: expected **{row['expected_label']}**, predicted "
+            f"**{row['predicted_label']}** at confidence {row['confidence']:.2f}. "
+            f"{row['reasoning']}"
+        )
+    return lines
+
+
 def write_report(
-    rows: list[dict[str, Any]],
-    metrics: dict[str, Any],
+    results: dict[str, tuple[list[dict[str, Any]], dict[str, Any]]],
     model: str,
     command: str,
 ) -> None:
-    stats = {}
-    if STATS_PATH.exists():
-        stats = json.loads(STATS_PATH.read_text(encoding="utf-8")).get("stats", {})
-    wrong = [row for row in rows if row["confidently_wrong"]]
-    escalated = [row for row in rows if row["status"] == "needs_review"]
-
+    stats = load_json(STATS_PATH).get("stats", {})
+    ml_metrics = load_json(ML_METRICS_PATH)
+    total_metrics = results.get("with_ml", results.get("without_ml", ([], {})))[1]
     lines = [
         "# Triage Eval",
         "",
         f"- Run at: {datetime.now(UTC).isoformat()}",
-        f"- Model: `{model}`",
+        f"- Agent model: `{model}`",
         f"- Command: `{command}`",
-        f"- Cases: {metrics['total_cases']} "
-        f"({metrics['labeled_cases']} labeled, {metrics['unknown_cases']} unknown)",
+        f"- Cases: {total_metrics.get('total_cases', 'unknown')} "
+        f"({total_metrics.get('labeled_cases', 'unknown')} labeled, "
+        f"{total_metrics.get('unknown_cases', 'unknown')} unknown)",
         f"- Data snapshot: {stats.get('final', 'unknown')} indicators "
         f"({stats.get('malicious', 'unknown')} malicious, "
         f"{stats.get('benign', 'unknown')} benign)",
+    ]
+
+    if ml_metrics:
+        evaluate = (ml_metrics.get("evaluate") or [{}])[0]
+        accuracy = evaluate.get("accuracy")
+        roc_auc = evaluate.get("roc_auc")
+        accuracy_text = f"{accuracy:.3f}" if isinstance(accuracy, (int, float)) else "n/a"
+        roc_auc_text = f"{roc_auc:.3f}" if isinstance(roc_auc, (int, float)) else "n/a"
+        lines.append(
+            f"- BQML model: `{ml_metrics.get('model')}` over "
+            f"{ml_metrics.get('training_table_rows', 'unknown')} feature rows; "
+            f"accuracy {accuracy_text}, roc_auc {roc_auc_text}"
+        )
+    else:
+        lines.append("- BQML metrics: unavailable (run `make ml`)")
+
+    lines += [
         "",
-        "## Metrics",
+        "## Comparison",
         "",
-        "| Metric | Value |",
-        "|---|---:|",
-        (
-            f"| Labeled accuracy | {metrics['accuracy']:.1%} "
-            f"({metrics['correct']}/{metrics['labeled_cases']}) |"
-        ),
-        (
-            f"| Escalation rate | {metrics['escalation_rate']:.1%} "
-            f"({metrics['escalated']}/{metrics['total_cases']}) |"
-        ),
-        (
-            f"| Required escalations met | {metrics['required_escalations_met']}/"
-            f"{metrics['required_escalations']} |"
-        ),
-        f"| Unknown cases escalated | {metrics['unknown_escalated']}/{metrics['unknown_cases']} |",
-        f"| Confidently wrong | {metrics['confidently_wrong']} |",
-        f"| False negatives | {metrics['false_negatives']} |",
-        f"| False positives | {metrics['false_positives']} |",
-        f"| Pipeline errors | {metrics['errors']} |",
-        f"| Average latency | {metrics['average_latency_ms']:.0f} ms |",
+        *_comparison_rows(results),
         "",
-        "Accuracy is computed only on the malicious/benign labeled cases. Unknown cases are "
+        "Accuracy is computed only on malicious/benign labeled cases. Unknown cases are "
         "synthetic escalation checks and are excluded from accuracy.",
         "",
         "### By case group",
         "",
-        "| Group | Correct | Labeled | Accuracy | Escalated |",
-        "|---|---:|---:|---:|---:|",
-    ]
-    for group, values in metrics["groups"].items():
-        accuracy = f"{values['accuracy']:.1%}" if values["labeled"] else "n/a"
-        lines.append(
-            f"| {group} | {values['correct']} | {values['labeled']} | "
-            f"{accuracy} | {values['escalated']}/{values['total']} |"
-        )
-
-    lines += [
+        *_group_rows(results),
         "",
         "## Per-case results",
         "",
-        "| ID | Group | Input | Expected | Predicted | Severity | Confidence | "
-        "Status | Correct | Tools |",
-        "|---|---|---|---|---|---|---:|---|---|---|",
+        *_per_case_rows(results),
+        "",
+        "## Confidently wrong",
+        "",
     ]
-    for row in rows:
-        tool_text = ", ".join(f"{tool['tool']}={tool['status']}" for tool in row["tools"])
-        if row["expected_label"] == "unknown":
-            correct_text = "n/a"
-        else:
-            correct_text = "yes" if row["correct"] else "no"
-        lines.append(
-            f"| {row['id']} | {row['group']} | `{row['input']}` | "
-            f"{row['expected_label']} | {row['predicted_label']} | "
-            f"{row['severity']} | {row['confidence']:.2f} | {row['status']} | "
-            f"{correct_text} | {tool_text} |"
-        )
+    for mode, label in MODE_LABELS.items():
+        if mode not in results:
+            continue
+        lines += [f"### {label}", "", *_confidently_wrong(results[mode][0]), ""]
 
-    lines += ["", "## Confidently wrong", ""]
-    if wrong:
-        for row in wrong:
-            lines.append(
-                f"- `{row['id']}`: expected **{row['expected_label']}**, predicted "
-                f"**{row['predicted_label']}** at confidence {row['confidence']:.2f}. "
-                f"{row['reasoning']}"
-            )
-    else:
-        lines.append("None in this run.")
-
-    lines += ["", "## Escalated cases", ""]
-    for row in escalated:
-        lines.append(
-            f"- `{row['id']}` ({row['expected_label']} -> {row['predicted_label']}, "
-            f"confidence {row['confidence']:.2f}): "
-            f"{'; '.join(row['policy_escalations']) or 'model requested review'}"
-        )
+    lines += ["## ML impact", "", *_ml_impact_rows(results), ""]
 
     lines += [
-        "",
         "## Limitations",
         "",
         "- The eval set has 20 cases and is intentionally small; these numbers are not a",
@@ -240,12 +373,12 @@ def write_report(
         "- Malicious labels come from OpenPhish (seen cases) and the Phishing Army active",
         "  blocklist (unseen cases); both can be noisy or stale. Benign labels come from Tranco",
         "  ranks and are not verified non-malicious.",
-        "- Six malicious cases are already loaded in BigQuery and test the lookup happy path;",
-        "  four malicious cases are held out and test generalization. The benign cases are",
-        "  outside the loaded top 5000. The feeds are not independent ground truth.",
-        "- Gemini calls are nondeterministic. This is a single run, not a repeated sample.",
-        "- Transient 429 errors are retried by the eval harness; only final pipeline errors are",
-        "  counted in the metrics.",
+        "- Six seen malicious domains are excluded from BQML training; four unseen malicious",
+        "  cases and the benign cases are outside the loaded indicators. This reduces, but does",
+        "  not eliminate, evaluation leakage and distribution shift.",
+        "- BQML metrics come from a random 20% split of the indicator feature table, not from",
+        "  the 20 agent eval cases. Both numbers are small-sample and single-run.",
+        "- Gemini and ML are probabilistic. This is one run, not a repeated sample.",
         "- RDAP gaps and shared-hosting subdomains frequently produce partial enrichment; the",
         "  policy deliberately escalates those cases.",
         "- The policy auto-closes only confident benign verdicts. Malicious, high/critical,",
@@ -262,34 +395,52 @@ async def main_async(args: argparse.Namespace) -> int:
     cases = load_cases(Path(args.cases))
     if args.limit:
         cases = cases[: args.limit]
+    if args.case_ids:
+        wanted = {item.strip() for item in args.case_ids.split(",") if item.strip()}
+        cases = [case for case in cases if case["id"] in wanted]
     settings = Settings()
-    rows: list[dict[str, Any]] = []
+    results: dict[str, tuple[list[dict[str, Any]], dict[str, Any]]] = {}
 
-    for index, case in enumerate(cases, start=1):
-        print(f"[{index}/{len(cases)}] {case['id']} {case['input']}", file=sys.stderr)
-        result = await run_case(case, retries=args.retries, delay=args.delay)
-        rows.append(build_row(case, result))
-        if args.delay:
-            await asyncio.sleep(args.delay)
+    if args.mode in {"without-ml", "both"}:
+        results["without_ml"] = await run_configuration(
+            cases,
+            use_ml=False,
+            retries=args.retries,
+            delay=args.delay,
+            label="without-ml",
+        )
+    if args.mode in {"with-ml", "both"}:
+        results["with_ml"] = await run_configuration(
+            cases,
+            use_ml=True,
+            retries=args.retries,
+            delay=args.delay,
+            label="with-ml",
+        )
 
-    metrics = compute_metrics(rows)
     payload = {
         "generated_at": datetime.now(UTC).isoformat(),
         "model": settings.gemini_model,
         "cases_path": str(Path(args.cases)),
-        "metrics": metrics,
-        "rows": rows,
+        "modes": {
+            mode: {"metrics": metrics, "rows": rows} for mode, (rows, metrics) in results.items()
+        },
     }
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     raw_path = RESULTS_DIR / f"eval-{timestamp}.json"
     raw_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     command = "uv run python -m evals.run_eval " + " ".join(sys.argv[1:])
-    write_report(rows, metrics, settings.gemini_model, command.strip())
+    write_report(results, settings.gemini_model, command.strip())
 
     print(
         json.dumps(
-            {"metrics": metrics, "raw_results": str(raw_path), "report": str(DOCS_PATH)}, indent=2
+            {
+                "metrics": {mode: metrics for mode, (_, metrics) in results.items()},
+                "raw_results": str(raw_path),
+                "report": str(DOCS_PATH),
+            },
+            indent=2,
         )
     )
     return 0
@@ -299,8 +450,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cases", default=str(CASES_PATH))
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--case-ids",
+        default=None,
+        help="Comma-separated case IDs to run (for quota-limited subsets).",
+    )
     parser.add_argument("--delay", type=float, default=2.0, help="Seconds between cases.")
     parser.add_argument("--retries", type=int, default=1, help="Retries for 429 errors.")
+    parser.add_argument(
+        "--mode",
+        choices=("both", "without-ml", "with-ml"),
+        default="both",
+        help="Run both configurations or only one.",
+    )
     return parser
 
 

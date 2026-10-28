@@ -32,6 +32,7 @@ def log_triage(result: TriageResult) -> None:
         "run_id": result.run_id,
         "input": result.input,
         "model": result.model,
+        "use_ml": result.use_ml,
         "tools_called": [item.model_dump(mode="json") for item in result.tools_called],
         "verdict": result.verdict.model_dump(mode="json"),
         "policy_escalations": result.policy_escalations,

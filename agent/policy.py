@@ -10,7 +10,12 @@ REQUIRED_TOOLS = frozenset({"lookup_indicator", "enrich_domain", "extract_url_fe
 DEGRADED_STATUSES = frozenset({"partial", "unavailable", "invalid"})
 
 
-def apply_policy(verdict: Verdict, recorder: ToolRecorder) -> tuple[Verdict, list[str]]:
+def apply_policy(
+    verdict: Verdict,
+    recorder: ToolRecorder,
+    *,
+    expect_ml: bool = False,
+) -> tuple[Verdict, list[str]]:
     """Enforce escalation rules after the model returns a verdict.
 
     The model is never trusted to be the only line of defense. Missing tools,
@@ -19,8 +24,12 @@ def apply_policy(verdict: Verdict, recorder: ToolRecorder) -> tuple[Verdict, lis
     """
     reasons: list[str] = []
 
+    required_tools = set(REQUIRED_TOOLS)
+    if expect_ml:
+        required_tools.add("ml_score")
+
     called_tools = {call.tool for call in recorder.calls}
-    missing = REQUIRED_TOOLS - called_tools
+    missing = required_tools - called_tools
     if missing:
         reasons.append(f"required tool(s) not called: {', '.join(sorted(missing))}")
 
@@ -43,6 +52,27 @@ def apply_policy(verdict: Verdict, recorder: ToolRecorder) -> tuple[Verdict, lis
             reasons.append("verdict says benign but lookup found only malicious sightings")
         if benign and not malicious and verdict.classification == "malicious":
             reasons.append("verdict says malicious but lookup found only benign sightings")
+
+    ml = recorder.last_result("ml_score")
+    if ml and ml.get("status") == "ok":
+        predicted_label = ml.get("predicted_label")
+        malicious_probability = ml.get("malicious_probability")
+        if predicted_label == "malicious" and verdict.classification == "benign":
+            reasons.append("ML predicts malicious while verdict says benign")
+        if predicted_label == "benign" and verdict.classification == "malicious":
+            reasons.append("ML predicts benign while verdict says malicious")
+        if lookup:
+            malicious = int(lookup.get("malicious_count", 0) or 0)
+            benign = int(lookup.get("benign_count", 0) or 0)
+            if predicted_label == "malicious" and benign and not malicious:
+                reasons.append("ML predicts malicious but lookup found only benign sightings")
+            if predicted_label == "benign" and malicious and not benign:
+                reasons.append("ML predicts benign but lookup found only malicious sightings")
+        if isinstance(malicious_probability, int | float):
+            if malicious_probability >= 0.7 and verdict.classification == "benign":
+                reasons.append("ML malicious probability is high while verdict says benign")
+            if malicious_probability <= 0.3 and verdict.classification == "malicious":
+                reasons.append("ML malicious probability is low while verdict says malicious")
 
     if verdict.classification == "unknown":
         reasons.append("classification is unknown")

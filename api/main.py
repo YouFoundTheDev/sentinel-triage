@@ -18,7 +18,7 @@ from tools.bq import get_client
 
 LOGGER = logging.getLogger("soc_triage.api")
 READY_TTL_SECONDS = 30.0
-TRIAGE_TIMEOUT_SECONDS = 225.0
+TRIAGE_TIMEOUT_SECONDS = 230.0
 
 app = FastAPI(
     title="SOC Alert Triage Agent",

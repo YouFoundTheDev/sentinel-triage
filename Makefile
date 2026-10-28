@@ -1,4 +1,4 @@
-.PHONY: install data data-local test eval api setup deploy lint fmt check clean
+.PHONY: install data data-local test ml eval api setup deploy lint fmt check clean
 
 install:
 	uv sync
@@ -11,6 +11,10 @@ data-local:
 
 test:
 	uv run pytest
+
+ml:
+	uv run python -m data.build_features
+	uv run python -m data.train_ml
 
 eval:
 	uv run python -m evals.run_eval

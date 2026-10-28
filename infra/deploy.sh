@@ -24,7 +24,7 @@ gcloud run deploy "$SERVICE" \
   --min-instances=0 \
   --max-instances=2 \
   --concurrency=4 \
-  --timeout=240 \
+  --timeout=260 \
   --set-env-vars="GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,GOOGLE_GENAI_USE_ENTERPRISE=TRUE,GEMINI_MODEL=gemini-3.8-flash,BQ_DATASET=${BQ_DATASET:-triage},BQ_TABLE=${BQ_TABLE:-indicators},BQ_LOCATION=US,LOG_LEVEL=INFO" \
   --quiet
 

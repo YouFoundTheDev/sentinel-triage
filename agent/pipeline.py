@@ -19,10 +19,11 @@ from agent.schemas import Evidence, TriageResult, Verdict
 from config import Settings
 from tools.enrich_domain import enrich_domain
 from tools.lookup_indicator import lookup_indicator
+from tools.ml_score import ml_score
 from tools.url_features import extract_url_features
 
 APP_NAME = "soc_triage"
-MODEL_TIMEOUT_SECONDS = 90.0
+MODEL_TIMEOUT_SECONDS = 110.0
 
 
 def _event_text(event: Any) -> str:
@@ -56,12 +57,14 @@ async def _run_agent(agent: LlmAgent, prompt: str, user_id: str) -> tuple[str, d
     return final_text, dict(session.state)
 
 
-def _build_investigator(recorder: ToolRecorder, model: str) -> LlmAgent:
+def _build_investigator(recorder: ToolRecorder, model: str, use_ml: bool) -> LlmAgent:
     tools = [
         record_tool(lookup_indicator, recorder),
         record_tool(enrich_domain, recorder),
         record_tool(extract_url_features, recorder),
     ]
+    if use_ml:
+        tools.append(record_tool(ml_score, recorder))
     return LlmAgent(
         name="soc_investigator",
         model=model,
@@ -70,7 +73,10 @@ def _build_investigator(recorder: ToolRecorder, model: str) -> LlmAgent:
         tools=tools,
         output_key="analysis",
         timeout=MODEL_TIMEOUT_SECONDS,
-        generate_content_config=types.GenerateContentConfig(temperature=0.2),
+        generate_content_config=types.GenerateContentConfig(
+            temperature=0.2,
+            thinking_config=types.ThinkingConfig(thinking_level="LOW"),
+        ),
     )
 
 
@@ -83,7 +89,10 @@ def _build_formatter(model: str) -> LlmAgent:
         output_schema=Verdict,
         output_key="verdict",
         timeout=MODEL_TIMEOUT_SECONDS,
-        generate_content_config=types.GenerateContentConfig(temperature=0.2),
+        generate_content_config=types.GenerateContentConfig(
+            temperature=0.2,
+            thinking_config=types.ThinkingConfig(thinking_level="LOW"),
+        ),
     )
 
 
@@ -152,7 +161,7 @@ def _fail_closed(
     return verdict, [f"triage pipeline failed: {error}"]
 
 
-async def triage(indicator: str) -> TriageResult:
+async def triage(indicator: str, *, use_ml: bool = True) -> TriageResult:
     """Run the ADK investigator and formatter, then enforce policy in code."""
     settings = Settings()
     model = settings.gemini_model
@@ -165,7 +174,7 @@ async def triage(indicator: str) -> TriageResult:
     error: str | None = None
 
     try:
-        investigator = _build_investigator(recorder, model)
+        investigator = _build_investigator(recorder, model, use_ml)
         investigator_started = time.perf_counter()
         analysis, _ = await _run_agent(
             investigator,
@@ -187,7 +196,7 @@ async def triage(indicator: str) -> TriageResult:
         formatter_latency_ms = (time.perf_counter() - formatter_started) * 1000
 
         verdict = _verdict_from_state_or_text(state, final_text)
-        verdict, escalations = apply_policy(verdict, recorder)
+        verdict, escalations = apply_policy(verdict, recorder, expect_ml=use_ml)
     except Exception as exc:
         error = f"{type(exc).__name__}: {str(exc)[:500]}"
         verdict, escalations = _fail_closed(indicator, error, recorder)
@@ -203,6 +212,7 @@ async def triage(indicator: str) -> TriageResult:
         investigator_latency_ms=investigator_latency_ms,
         formatter_latency_ms=formatter_latency_ms,
         model=model,
+        use_ml=use_ml,
         error=error,
     )
     log_triage(result)

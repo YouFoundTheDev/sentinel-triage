@@ -18,6 +18,8 @@ class Settings(BaseSettings):
 
     bq_dataset: str = "triage"
     bq_table: str = "indicators"
+    bq_features_table: str = "url_features"
+    bq_model: str = "url_classifier"
     bq_location: str = "US"
 
     data_dir: Path = Path("data/raw")

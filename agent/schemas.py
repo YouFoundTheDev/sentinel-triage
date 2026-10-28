@@ -68,4 +68,5 @@ class TriageResult(BaseModel):
     investigator_latency_ms: float | None = None
     formatter_latency_ms: float | None = None
     model: str
+    use_ml: bool = True
     error: str | None = None
