@@ -178,8 +178,9 @@ gcloud builds triggers create github \
 For a 1st-gen GitHub App connection, use `--repo-owner` and `--repo-name` instead of
 `--repository`, and omit `--region`.
 
-The repository is pushed, but the trigger is not created yet because the GitHub OAuth/app
-installation step requires browser authorization. The pipeline itself is verified manually.
+The GitHub connection is `COMPLETE`; the repository resource `sentinel-triage` is linked;
+and the `soc-triage-main` trigger is active for pushes to `main`. The first trigger run is
+verified below.
 
 ### Pull-request checks
 

@@ -116,9 +116,10 @@ The manual pipeline was verified end to end (all four Cloud Build steps `SUCCESS
 new revision served `/health` and `/ready` with 200.
 
 The private repository is `https://github.com/YouFoundTheDev/sentinel-triage`. The Cloud
-Build GitHub connection `soc-triage-github` is created but pending user OAuth and Cloud Build
-GitHub App installation. Once authorized, `infra/create_trigger.sh` creates the push-to-main
-trigger. The exact commands are in `infra/README.md`.
+Build GitHub connection `soc-triage-github` is complete, and the
+`soc-triage-main` trigger runs this pipeline on every push to `main`. The trigger uses the
+dedicated `soc-triage-builder` service account. Exact setup commands are in
+`infra/README.md`.
 
 Pull requests run lint + tests in `.github/workflows/ci.yml` using GitHub Actions and no GCP
 credentials.
