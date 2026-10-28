@@ -1,0 +1,32 @@
+[
+  {
+    "name": "url",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "domain",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "label",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "threat_type",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "first_seen",
+    "type": "DATE",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "source",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  }
+]

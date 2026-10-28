@@ -1,0 +1,58 @@
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: soc-triage
+  _SERVICE: soc-triage-agent
+  _RUNTIME_SA: soc-triage-runtime@wide-factor-387115.iam.gserviceaccount.com
+
+timeout: 1800s
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - id: lint-and-test
+    name: python:3.13-slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        pip install --no-cache-dir uv==0.11.14
+        uv sync --frozen --dev
+        uv run ruff check .
+        uv run pytest
+
+  - id: build-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/agent:$SHORT_SHA
+      - .
+
+  - id: push-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/agent:$SHORT_SHA
+
+  - id: deploy-cloud-run
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/agent:$SHORT_SHA
+      - --region=${_REGION}
+      - --project=$PROJECT_ID
+      - --service-account=${_RUNTIME_SA}
+      - --no-allow-unauthenticated
+      - --cpu=1
+      - --memory=1Gi
+      - --min-instances=0
+      - --max-instances=2
+      - --concurrency=4
+      - --timeout=240
+      - --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=global,GOOGLE_GENAI_USE_ENTERPRISE=TRUE,GEMINI_MODEL=gemini-3.8-flash,BQ_DATASET=triage,BQ_TABLE=indicators,BQ_LOCATION=US,LOG_LEVEL=INFO
+      - --quiet
