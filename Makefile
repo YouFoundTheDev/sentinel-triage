@@ -1,4 +1,4 @@
-.PHONY: install data data-local test ml eval api setup deploy lint fmt check clean
+.PHONY: install data data-local test ml eval api setup deploy demo lint fmt check clean
 
 install:
 	uv sync
@@ -27,6 +27,9 @@ setup:
 
 deploy:
 	./infra/deploy.sh
+
+demo:
+	./scripts/demo.sh
 
 lint:
 	uv run ruff check .

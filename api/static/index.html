@@ -3,7 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1015" />
+    <meta
+      name="description"
+      content="Sentinel Triage — a fail-closed SOC alert triage console for suspicious URLs and domains."
+    />
     <title>Sentinel Triage</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1015'/%3E%3Cpath d='M18 23h28M18 32h18M18 41h24' stroke='%237ee787' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -17,9 +26,20 @@
           <p>Fail-closed SOC alert console</p>
         </div>
       </div>
-      <div class="status" id="api-status" data-state="checking">
-        <span class="dot" aria-hidden="true"></span>
-        <span id="api-status-text">Checking API</span>
+      <div class="top-actions">
+        <div class="status" id="api-status" data-state="checking">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="api-status-text">Checking API</span>
+        </div>
+        <nav class="nav" aria-label="Resources">
+          <a href="/docs" target="_blank" rel="noreferrer">API docs</a>
+          <a
+            href="https://github.com/YouFoundTheDev/sentinel-triage"
+            target="_blank"
+            rel="noreferrer"
+            >GitHub</a
+          >
+        </nav>
       </div>
     </header>
 
@@ -58,10 +78,39 @@
             <button type="button" class="chip" data-example="https://000-054343-info.weebly.com/login">
               unseen sample
             </button>
+            <span class="shortcut muted small">⌘/Ctrl + Enter</span>
           </div>
         </form>
 
         <div id="error" class="error" role="alert" hidden></div>
+
+        <section id="recent" class="recent" hidden aria-labelledby="recent-title">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Recent</div>
+              <h3 id="recent-title">Local history</h3>
+            </div>
+            <button type="button" class="link-button" id="clear-history">Clear</button>
+          </div>
+          <p class="muted small history-note">Stored only in this browser.</p>
+          <div id="recent-list" class="recent-list"></div>
+        </section>
+      </section>
+
+      <section id="loading" class="panel loading" hidden aria-live="polite">
+        <div class="loading-head">
+          <span class="spinner" aria-hidden="true"></span>
+          <div>
+            <div class="eyebrow">Investigating</div>
+            <h3>Collecting evidence</h3>
+            <p class="muted">
+              BigQuery sightings · DNS/RDAP · URL features · ML score
+            </p>
+          </div>
+        </div>
+        <div class="skeleton" aria-hidden="true">
+          <i></i><i></i><i></i><i></i>
+        </div>
       </section>
 
       <section id="result" class="result" aria-live="polite" hidden>
@@ -69,14 +118,26 @@
           <div>
             <div class="eyebrow">Verdict</div>
             <div id="badges" class="badges"></div>
+            <p id="verdict-time" class="meta result-time"></p>
           </div>
-          <div class="confidence">
-            <div class="confidence-label">
-              <span>Confidence</span>
+          <div
+            class="confidence-ring"
+            id="confidence-ring"
+            style="--value: 0; --ring-color: #f0b429"
+            role="img"
+            aria-label="Confidence"
+          >
+            <div class="ring-inner">
               <strong id="confidence-value">—</strong>
+              <span>confidence</span>
             </div>
-            <div class="bar"><i id="confidence-fill"></i></div>
           </div>
+        </div>
+
+        <div class="result-actions">
+          <button type="button" class="secondary" id="copy-json">Copy JSON</button>
+          <button type="button" class="secondary" id="download-json">Download</button>
+          <button type="button" class="secondary" id="new-triage">New investigation</button>
         </div>
 
         <div class="result-grid">
@@ -126,13 +187,23 @@
             </p>
           </div>
         </div>
+        <div class="legend" aria-label="Verdict legend">
+          <span class="legend-item"><i class="legend-dot ok"></i>ok</span>
+          <span class="legend-item"><i class="legend-dot partial"></i>partial</span>
+          <span class="legend-item"><i class="legend-dot unavailable"></i>unavailable</span>
+          <span class="legend-item"><i class="legend-dot review"></i>needs review</span>
+        </div>
       </section>
     </main>
 
     <footer>
-      Private Cloud Run service. Use <code>gcloud run services proxy</code> or
-      <code>make api</code> to open this console.
+      <span>Private Cloud Run service. Use <code>gcloud run services proxy</code> or <code>make api</code>.</span>
+      <span>No external JS, fonts, or CDNs.</span>
     </footer>
+
+    <noscript>
+      <div class="noscript">JavaScript is required for the triage console.</div>
+    </noscript>
 
     <script src="app.js" defer></script>
   </body>

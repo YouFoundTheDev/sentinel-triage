@@ -9,6 +9,23 @@
 
 This Stage 6 comparison uses a quota-limited subset of 12/20 cases because the full ML run hit Vertex AI 429/timeouts. The full 20-case no-ML Stage 3 baseline was 72.2% accuracy (13/18) and 65% escalation.
 
+> **Bottom line:** this is a small, single-run portfolio eval. The no-ML baseline is stronger than the ML subset run; BQML holdout metrics are not agent metrics.
+
+## Methodology
+
+- Cases: 6 seen malicious (OpenPhish, loaded), 4 unseen malicious (Phishing Army), 8 benign
+  (Tranco ranks outside the loaded top 5,000), and 2 synthetic unknown `.invalid` hosts. The
+  full set has 20 cases; the Stage 6 comparison uses 12.
+- Accuracy counts only malicious/benign labeled cases. Unknown cases test required
+  escalation and are excluded from accuracy.
+- `needs_review` is the escalation rate. A confidently wrong case is a labeled case whose
+  predicted classification is wrong with confidence ≥ 0.7.
+- The six seen malicious domains are excluded from BQML training. The BQML metrics come
+  from a random 20% split of the remaining indicator feature table, not from these agent
+  cases.
+
+Reproduce: `make ml && make eval`.
+
 ## Comparison
 
 | Metric | Without ML | With ML |

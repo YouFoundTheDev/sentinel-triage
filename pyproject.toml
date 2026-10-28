@@ -1,9 +1,12 @@
 [project]
 name = "soc-triage-agent"
 version = "0.1.0"
-description = "SOC alert triage agent on Google Cloud"
+description = "Fail-closed SOC alert triage agent on Google Cloud"
 readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "YouFoundTheDev" }]
 requires-python = ">=3.11,<3.14"
+keywords = ["soc", "security", "google-cloud", "adk", "gemini", "bigquery", "cloud-run"]
 dependencies = [
     "dnspython>=2.6.0",
     "fastapi>=0.115.0",
@@ -22,6 +25,10 @@ dev = [
     "pytest>=8.2.0",
     "ruff>=0.6.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/YouFoundTheDev/sentinel-triage"
+Issues = "https://github.com/YouFoundTheDev/sentinel-triage/issues"
 
 [tool.uv]
 package = false

@@ -1,5 +1,11 @@
 # Sentinel Triage
 
+[![CI](https://github.com/YouFoundTheDev/sentinel-triage/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/YouFoundTheDev/sentinel-triage/actions/workflows/ci.yml)
+![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+![Google Cloud](https://img.shields.io/badge/Google%20Cloud-Run%20%7C%20BigQuery%20%7C%20Vertex%20AI-4285F4)
+![Status](https://img.shields.io/badge/status-portfolio%20project-6b7280)
+
 **Sentinel Triage is a fail-closed SOC alert triage agent on Google Cloud.** It accepts a
 suspicious URL or domain, gathers previous sightings, DNS/RDAP context, lexical URL
 features, and a BigQuery ML score, and returns a structured verdict with severity,
@@ -8,7 +14,40 @@ confidence, evidence, a recommended action, and an explicit `auto_closed` or
 deterministic policy runs after the model and escalates low-confidence, degraded,
 conflicting, or non-benign results instead of silently closing them.
 
-Private repo: `https://github.com/YouFoundTheDev/sentinel-triage`
+Repository: [`YouFoundTheDev/sentinel-triage`](https://github.com/YouFoundTheDev/sentinel-triage)
+(private portfolio build).
+
+![Sentinel Triage console](docs/ui.png)
+
+## At a glance
+
+| | |
+|---|---|
+| **Approach** | ADK investigator + tool-free structured verdict formatter, Gemini via Vertex AI |
+| **Signals** | BigQuery sightings, DNS A/MX/NS, RDAP age, lexical URL features, BQML probability |
+| **Safety** | no URL fetching; deterministic fail-closed policy after every model response |
+| **Runtime** | private Cloud Run, authenticated invocations only, scale-to-zero |
+| **Delivery** | Cloud Build trigger on `main`; GitHub Actions lint/tests on pull requests |
+| **Eval** | 20-case no-ML baseline; honest 12-case ML comparison below |
+| **Status** | portfolio/reference project, not production |
+
+## Contents
+
+- [Architecture](#architecture)
+- [What this demonstrates](#what-this-demonstrates)
+- [GCP services and why](#gcp-services-and-why)
+- [Tools and verdict](#tools-and-verdict)
+- [Design decisions](#design-decisions)
+- [Run locally](#run-locally)
+- [Frontend](#frontend)
+- [Deploy](#deploy)
+- [Evaluation](#evaluation)
+- [CI/CD](#cicd)
+- [Security](#security)
+- [Limitations](#limitations)
+- [Roadmap](#what-id-improve-next)
+- [Documentation](#documentation)
+- [License](#license)
 
 ## Architecture
 
@@ -37,6 +76,16 @@ The investigator calls four tools: `lookup_indicator`, `enrich_domain`,
 `output_schema=Verdict`; splitting the tool-calling and formatting steps avoids ADK's
 unreliable structured-output-plus-tools fallback. The policy then replaces model-provided
 evidence with the actual tool calls and enforces escalation in code.
+
+## What this demonstrates
+
+- Agentic tool use with Google ADK, explicit tool schemas, and Gemini structured output.
+- Deterministic guardrails after model output rather than prompt-only safety.
+- BigQuery + BigQuery ML with parameterized lookups, feature engineering, and a model tool.
+- A production-shaped GCP deployment: private Cloud Run, dedicated runtime/builder service
+  accounts, Artifact Registry, Cloud Build, and authenticated invocation.
+- Honest evaluation, including a documented negative result when ML did not help.
+- A dependency-free frontend served by FastAPI with copy/download/history affordances.
 
 ## GCP services and why
 
@@ -67,6 +116,18 @@ evidence with the actual tool calls and enforces escalation in code.
 `needs_review` when confidence is below 0.7, any required tool is missing or degraded,
 lookup/ML/verdict evidence conflicts, classification is unknown, or the verdict is
 malicious/high severity. Only confident benign verdicts can auto-close.
+
+## Design decisions
+
+| Decision | Why |
+|---|---|
+| Two ADK agents | Tool-calling and `output_schema` are separated; the combined mode looped during testing |
+| No URL fetch | Removes SSRF and accidental interaction with attacker infrastructure |
+| Policy after the model | The model can suggest; code decides `needs_review` |
+| Cloud Run IAM only | No app-level auth to get wrong; the platform enforces identity |
+| Legacy dataset READER | Dataset IAM command is allowlisted in this project; scoped read is preserved |
+| `/health` + `/ready` | Cloud Run's edge reserves some `z`-suffixed paths such as `/healthz` |
+| ML enabled by default | Demonstrates the tool; the eval shows it can hurt and is treated as one signal |
 
 ## Run locally
 
@@ -108,9 +169,9 @@ paths ending in `z`, so the deployed service also exposes `/health` and `/ready`
 ## Frontend
 
 FastAPI serves a small vanilla HTML/CSS/JS console at `/ui/` — no build step, no CDN, no
-external fonts. It shows the verdict badges, confidence, recommended action, reasoning,
-per-tool evidence, latency, and raw JSON. The UI only calls the same-origin API; it never
-fetches the submitted URL.
+external fonts. It shows verdict badges, a confidence ring, recommended action, reasoning,
+per-tool evidence, latency, local recent history, and raw JSON with copy/download controls.
+It only calls the same-origin API; it never fetches the submitted URL.
 
 Locally:
 
@@ -189,8 +250,8 @@ Stage 6 ML comparison is quota-limited.
 
 ## CI/CD
 
-- `.github/workflows/ci.yml` runs `ruff` and `pytest` on pull requests to `main`.
-- `cloudbuild.yaml` runs lint/tests, builds, pushes, and deploys on pushes to `main`.
+- `.github/workflows/ci.yml` runs Ruff formatting/checking and pytest on pull requests to `main`.
+- `cloudbuild.yaml` runs formatting, lint, tests, builds, pushes, and deploys on pushes to `main`.
 - The trigger only deploys if tests pass because steps are sequential.
 - Builder account: `soc-triage-builder@wide-factor-387115.iam.gserviceaccount.com` with
   `roles/cloudbuild.builds.builder`, `roles/run.admin`, and `roles/iam.serviceAccountUser`
@@ -231,6 +292,14 @@ Stage 6 ML comparison is quota-limited.
 - The runtime SA has project-level `jobUser` and `aiplatform.user`; Vertex AI has no
   practical per-model scoping here.
 
+## Documentation
+
+- [Evaluation report](docs/eval.md) — metrics, per-case data, quota limitation.
+- [Demo](docs/demo.md) — real requests and abridged outputs.
+- [Infrastructure](infra/README.md) — resources, IAM, trigger, deploy commands.
+- [Security policy](SECURITY.md) — reporting and security design.
+- [Contributing](CONTRIBUTING.md) — local checks and review expectations.
+
 ## What I'd improve next
 
 - Use larger, temporally split, less source-correlated URL data; add passive DNS,
@@ -261,7 +330,11 @@ api/         FastAPI service and vanilla /ui console
 data/        download, clean, BigQuery load, feature build, BQML training
 tools/       lookup, DNS/RDAP enrichment, URL features, ML score
 evals/       labeled cases, raw results (ignored), eval runner
-docs/        eval report and demo notes
+docs/        eval report, demo, console screenshot
 infra/       setup, deploy, CI setup, trigger, BigQuery schemas/SQL
 tests/       103 unit tests
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
