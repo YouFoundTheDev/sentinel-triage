@@ -179,8 +179,14 @@ For a 1st-gen GitHub App connection, use `--repo-owner` and `--repo-name` instea
 `--repository`, and omit `--region`.
 
 The GitHub connection is `COMPLETE`; the repository resource `sentinel-triage` is linked;
-and the `soc-triage-main` trigger is active for pushes to `main`. The first trigger run is
-verified below.
+and the `soc-triage-main` trigger is active for pushes to `main`.
+
+Verified:
+
+- Push-triggered build `d7fcdc89-b78c-48ca-b313-165f5e2d09c6` (commit `cdcff3f`): SUCCESS,
+  revision `soc-triage-agent-00005-mdg`.
+- Explicit trigger run `a841eb9b-086a-46c0-bdc9-c31aaab8f251`: SUCCESS.
+- GitHub Actions run `40732202501`: SUCCESS (`ruff` + 90 tests).
 
 ### Pull-request checks
 

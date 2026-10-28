@@ -118,7 +118,8 @@ new revision served `/health` and `/ready` with 200.
 The private repository is `https://github.com/YouFoundTheDev/sentinel-triage`. The Cloud
 Build GitHub connection `soc-triage-github` is complete, and the
 `soc-triage-main` trigger runs this pipeline on every push to `main`. The trigger uses the
-dedicated `soc-triage-builder` service account. Exact setup commands are in
+dedicated `soc-triage-builder` service account. A push-triggered build and the GitHub
+Actions workflow were both verified successfully. Exact setup commands are in
 `infra/README.md`.
 
 Pull requests run lint + tests in `.github/workflows/ci.yml` using GitHub Actions and no GCP
