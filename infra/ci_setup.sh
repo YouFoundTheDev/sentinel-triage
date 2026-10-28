@@ -8,7 +8,20 @@ RUNTIME_SA="${RUNTIME_SA:-soc-triage-runtime@${PROJECT_ID}.iam.gserviceaccount.c
 
 gcloud config set project "$PROJECT_ID" >/dev/null
 
-gcloud services enable cloudbuild.googleapis.com --project "$PROJECT_ID"
+gcloud services enable \
+  cloudbuild.googleapis.com \
+  secretmanager.googleapis.com \
+  --project "$PROJECT_ID"
+
+# 2nd-gen GitHub connections store the OAuth token in Secret Manager. The
+# Cloud Build service agent needs permission to create/manage that secret.
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+CLOUDBUILD_P4SA="service-${PROJECT_NUMBER}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${CLOUDBUILD_P4SA}" \
+  --role="roles/secretmanager.admin" \
+  --condition=None \
+  --quiet >/dev/null
 
 if ! gcloud iam service-accounts describe "$BUILDER_SA" --project "$PROJECT_ID" >/dev/null 2>&1; then
   gcloud iam service-accounts create "$BUILDER_SA_NAME" \

@@ -131,13 +131,34 @@ Verified build: `0092d224-2e61-4c5a-acf1-6770c37dd7cd` — all four steps `SUCCE
 
 ### Push trigger
 
-Create the GitHub connection first in the Cloud Build console:
-**Repositories → Connect repository → GitHub (Cloud Build GitHub App)**. Then:
+The private repository is `YouFoundTheDev/sentinel-triage`. The connection
+`soc-triage-github` exists in `us-central1` and is waiting for OAuth authorization and the
+Cloud Build GitHub App installation. `ci_setup.sh` enables Secret Manager and grants the
+Cloud Build service agent the Secret Manager access needed for the OAuth token.
+
+Create/authorize the connection:
 
 ```bash
-GITHUB_OWNER=your-org \
-GITHUB_REPO=your-repo \
-CONNECTION=your-connection \
+gcloud builds connections create github soc-triage-github \
+  --region=us-central1 --project=wide-factor-387115
+# Open the printed OAuth link, authorize, then install the Cloud Build GitHub App
+# on the private sentinel-triage repository.
+gcloud builds connections describe soc-triage-github \
+  --region=us-central1 --project=wide-factor-387115
+```
+
+Then link the repository and create the trigger:
+
+```bash
+gcloud builds repositories create sentinel-triage \
+  --connection=soc-triage-github \
+  --region=us-central1 \
+  --remote-uri=https://github.com/YouFoundTheDev/sentinel-triage.git \
+  --project=wide-factor-387115
+
+GITHUB_OWNER=YouFoundTheDev \
+GITHUB_REPO=sentinel-triage \
+CONNECTION=soc-triage-github \
 ./infra/create_trigger.sh
 ```
 
@@ -157,8 +178,8 @@ gcloud builds triggers create github \
 For a 1st-gen GitHub App connection, use `--repo-owner` and `--repo-name` instead of
 `--repository`, and omit `--region`.
 
-This workspace has no GitHub remote, so the trigger is not created yet. The pipeline itself
-is verified manually.
+The repository is pushed, but the trigger is not created yet because the GitHub OAuth/app
+installation step requires browser authorization. The pipeline itself is verified manually.
 
 ### Pull-request checks
 
